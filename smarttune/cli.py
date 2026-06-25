@@ -32,6 +32,33 @@ def _fail_in_progress(progress: Progress, exc: SmartTuneError) -> NoReturn:
     sys.exit(1)
 
 
+def resolve_report_path(output_file: Optional[Path], log_file: Path, ext: str, default_suffix: str = "_report") -> Path:
+    """Resolve the report file path, ensuring the log filename is included."""
+    log_stem = log_file.stem
+    if output_file is None:
+        return Path(f"{log_stem}{default_suffix}{ext}")
+
+    if output_file.is_dir() or str(output_file).endswith("/") or str(output_file).endswith("\\"):
+        output_file.mkdir(parents=True, exist_ok=True)
+        return output_file / f"{log_stem}{default_suffix}{ext}"
+
+    # If a specific file is requested, inject the log filename before the extension
+    parent = output_file.parent
+    stem = output_file.stem
+    suffix = output_file.suffix.lower()
+
+    # If the user-provided filename already contains the log stem, keep it as is
+    if log_stem.lower() in stem.lower():
+        resolved = output_file
+    else:
+        resolved = parent / f"{stem}_{log_stem}{suffix}"
+
+    if resolved.suffix.lower() != ext:
+        resolved = resolved.with_suffix(ext)
+
+    return resolved
+
+
 # ---------------------------------------------------------------------------
 # 入口组
 # ---------------------------------------------------------------------------
@@ -237,9 +264,7 @@ def analyze(log_file: Path, platform_name: str, output_file: Optional[Path],
                     log_path=str(log_file),
                 )
 
-                html_path = output_file if output_file else Path(log_file.stem + "_report.html")
-                if html_path.suffix.lower() != ".html":
-                    html_path = html_path.with_suffix(".html")
+                html_path = resolve_report_path(output_file, log_file, ".html", "_report")
 
                 save_html_report(html_out, str(html_path))
                 progress.update(p_html, completed=True, description="[green]✓ HTML report generated")
@@ -257,10 +282,11 @@ def analyze(log_file: Path, platform_name: str, output_file: Optional[Path],
                 fmt.format_magfit(magfit_result)
 
             # ── Markdown report ──
-            if effective_report_format == "md" and output_file:
+            if effective_report_format == "md" or output_file is not None:
+                md_path = resolve_report_path(output_file, log_file, ".md", "_report")
                 md = fmt.to_markdown(full_result)
-                output_file.write_text(md, encoding="utf-8")
-                _console.print(f"\n[green]✓[/green] Report saved: [cyan]{output_file}[/cyan]")
+                md_path.write_text(md, encoding="utf-8")
+                _console.print(f"\n[green]✓[/green] Report saved: [cyan]{md_path}[/cyan]")
 
         # ── Visual plots ─────────────────────────────────────────────────
         if visual:
@@ -683,8 +709,9 @@ def quality(log_file: Path, platform_name: str, output_file: Optional[Path], veh
         _console.print(line)
 
     if output_file:
-        output_file.write_text(report_text + "\n", encoding="utf-8")
-        _console.print(f"\n[green]✓[/green] Quality report saved: [cyan]{output_file}[/cyan]")
+        resolved_path = resolve_report_path(output_file, log_file, ".txt", "_quality")
+        resolved_path.write_text(report_text + "\n", encoding="utf-8")
+        _console.print(f"\n[green]✓[/green] Quality report saved: [cyan]{resolved_path}[/cyan]")
 
 
 # ---------------------------------------------------------------------------
