@@ -277,9 +277,15 @@ class FullAnalysisResult:
             for ax_result in self.pid.axes.values():
                 recs.extend(ax_result.recommendations)
         if self.fft:
-            recs.extend(self.fft.recommendations)
+            recs_raw = getattr(self.fft, "recommendations", None)
+            if isinstance(recs_raw, list):
+                recs.extend(recs_raw)
         if self.filter:
-            recs.extend(self.filter.recommendations)
+            recs_raw = getattr(self.filter, "recommendations", None)
+            if isinstance(recs_raw, list):
+                recs.extend(recs_raw)
         if self.magfit:
-            recs.extend(self.magfit.recommendations)
+            recs_raw = getattr(self.magfit, "recommendations", None)
+            if isinstance(recs_raw, list):
+                recs.extend(recs_raw)
         return recs
