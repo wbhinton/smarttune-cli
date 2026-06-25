@@ -334,6 +334,7 @@ def generate_plot(
     plot_type: str = "pid",
     axis: str = "all",
     theme: str = "light",
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """High-level: parse log → run analysis → generate plot → return base64.
 
@@ -349,6 +350,8 @@ def generate_plot(
         Axis for PID ("all", "roll", "pitch", "yaw").
     theme : str
         "light" or "dark".
+    vehicle_type : str, optional
+        Vehicle type override ("fixed_wing" or "multirotor").
 
     Returns
     -------
@@ -357,7 +360,7 @@ def generate_plot(
     from smarttune.services.analysis import load_flight_data
 
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
 
     if plot_type == "pid":
         if "pid" not in adapter.capabilities():
@@ -368,6 +371,7 @@ def generate_plot(
         from smarttune.analyzers.pid_reviewer import PIDReviewer
         from smarttune.knowledge import KnowledgeBase
         kb = KnowledgeBase(platform=adapter.name)
+        kb.resolve_inav_rules(fd.frame_type)
         reviewer = PIDReviewer(knowledge=kb.get("pid_rules", {}))
         # Get raw dataclass for plot (not serialized dict)
         pid_result = reviewer.analyze(fd, axis=axis if axis != "all" else None)
@@ -387,6 +391,7 @@ def generate_plot(
         from smarttune.services.serialize import serialize_fft_result
         from smarttune.knowledge import KnowledgeBase
         kb = KnowledgeBase(platform=adapter.name)
+        kb.resolve_inav_rules(fd.frame_type)
         analyzer = FFTAnalyzer(knowledge=kb.get("filter_rules", {}))
         result = analyzer.analyze(fd)
         serialized = serialize_fft_result(result, adapter)
@@ -411,6 +416,7 @@ def generate_plot(
             platform=platform,
             auto_derive=True,
             _include_bode_data=True,
+            vehicle_type=vehicle_type,
         )
         plot_data = generate_filter_bode_plot(result, theme=theme)
         plot_data["plot_type"] = "filter"

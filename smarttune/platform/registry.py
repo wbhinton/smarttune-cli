@@ -181,6 +181,10 @@ def _auto_discover():
         import smarttune.platform.px4  # noqa: F401
     except ImportError:
         logger.debug("PX4 adapter not available")
+    try:
+        import smarttune.platform.inav  # noqa: F401
+    except ImportError:
+        logger.debug("INAV adapter not available")
 
 
 _auto_discover()

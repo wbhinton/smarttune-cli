@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "source": "inav-tuning-kb",
+  "description": "INAV Rate PID Tuning Knowledge Base for both Fixed-Wing and Multirotor craft",
+
+  "pid_bounds": {
+    "p":  [5, 150],
+    "i":  [0, 220],
+    "d":  [0, 100],
+    "ff": [0, 500]
+  },
+
+  "axis": ["roll", "pitch", "yaw"],
+
+  "fixed_wing_thresholds": {
+    "roll": {
+      "rise_time_ms":      {"min": 50,  "max": 250,  "ideal": 120},
+      "overshoot_percent": {"min": 0,   "max": 25,   "ideal": 8},
+      "settling_time_ms":  {"min": 100, "max": 600,  "ideal": 250},
+      "oscillation_count": {"min": 0,   "max": 3,    "ideal": 0},
+      "ss_error_percent":  {"min": 0,   "max": 5,    "ideal": 0}
+    },
+    "pitch": {
+      "rise_time_ms":      {"min": 50,  "max": 250,  "ideal": 120},
+      "overshoot_percent": {"min": 0,   "max": 25,   "ideal": 8},
+      "settling_time_ms":  {"min": 100, "max": 600,  "ideal": 250},
+      "oscillation_count": {"min": 0,   "max": 3,    "ideal": 0},
+      "ss_error_percent":  {"min": 0,   "max": 5,    "ideal": 0}
+    },
+    "yaw": {
+      "rise_time_ms":      {"min": 80,  "max": 500,  "ideal": 180},
+      "overshoot_percent": {"min": 0,   "max": 30,   "ideal": 10},
+      "settling_time_ms":  {"min": 150, "max": 1000, "ideal": 400},
+      "oscillation_count": {"min": 0,   "max": 4,    "ideal": 1},
+      "ss_error_percent":  {"min": 0,   "max": 8,    "ideal": 0}
+    }
+  },
+
+  "multirotor_thresholds": {
+    "roll": {
+      "rise_time_ms":      {"min": 40,  "max": 120,  "ideal": 80},
+      "overshoot_percent": {"min": 0,   "max": 15,   "ideal": 5},
+      "settling_time_ms":  {"min": 100, "max": 350,  "ideal": 200},
+      "oscillation_count": {"min": 0,   "max": 2,    "ideal": 0},
+      "ss_error_percent":  {"min": 0,   "max": 5,    "ideal": 0}
+    },
+    "pitch": {
+      "rise_time_ms":      {"min": 40,  "max": 150,  "ideal": 90},
+      "overshoot_percent": {"min": 0,   "max": 20,   "ideal": 8},
+      "settling_time_ms":  {"min": 100, "max": 400,  "ideal": 250},
+      "oscillation_count": {"min": 0,   "max": 2,    "ideal": 0},
+      "ss_error_percent":  {"min": 0,   "max": 5,    "ideal": 0}
+    },
+    "yaw": {
+      "rise_time_ms":      {"min": 40,  "max": 200,  "ideal": 120},
+      "overshoot_percent": {"min": 0,   "max": 25,   "ideal": 10},
+      "settling_time_ms":  {"min": 150, "max": 600,  "ideal": 350},
+      "oscillation_count": {"min": 0,   "max": 3,    "ideal": 1},
+      "ss_error_percent":  {"min": 0,   "max": 8,    "ideal": 0}
+    }
+  },
+
+  "tuning_rules": [
+    {
+      "rule_id": "HIGH_OS",
+      "symptom": "overshoot",
+      "adjust": [{"param": "p", "action": "decrease", "factor": 0.85},
+                 {"param": "d", "action": "decrease", "factor": 0.90}],
+      "reason": "Overshoot exceeds threshold — reduce P gain",
+      "confidence": "high"
+    },
+    {
+      "rule_id": "SLOW_RISE",
+      "symptom": "rise_time",
+      "adjust": [{"param": "p", "action": "increase", "factor": 1.15},
+                 {"param": "d", "action": "decrease", "factor": 0.95}],
+      "reason": "Slow rise time — increase P gain for faster response",
+      "confidence": "high"
+    },
+    {
+      "rule_id": "OSCILLATION",
+      "symptom": "oscillation_count",
+      "adjust": [{"param": "p", "action": "decrease", "factor": 0.90},
+                 {"param": "d", "action": "increase", "factor": 1.10}],
+      "reason": "Excessive oscillation — increase D/d_max gain for damping",
+      "confidence": "medium"
+    },
+    {
+      "rule_id": "LONG_SETTLE",
+      "symptom": "settling_time",
+      "adjust": [{"param": "i", "action": "increase", "factor": 1.20}],
+      "reason": "Long settling time — increase I gain for convergence",
+      "confidence": "medium"
+    },
+    {
+      "rule_id": "SS_ERROR",
+      "symptom": "steady_state_error",
+      "adjust": [{"param": "i", "action": "increase", "factor": 1.25}],
+      "reason": "Steady-state error — increase I gain to eliminate offset",
+      "confidence": "high"
+    }
+  ]
+}

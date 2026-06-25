@@ -1,9 +1,7 @@
 """
-smarttune/platform/betaflight/__init__.py
+smarttune/platform/inav/__init__.py
 
-Betaflight Blackbox 日志适配器 — BBL/BFL 格式。
-
-Phase 2: 完整 BBL 解析器实现。
+INAV Blackbox 日志适配器 — BBL/BFL 格式。
 """
 
 from __future__ import annotations
@@ -19,93 +17,48 @@ from smarttune.platform.registry import register
 from smarttune.models.flight_data import AxisPIDSignal, FlightData, ModeChange
 from smarttune.errors import (
     LogFileNotFoundError, LogFileCorruptError, ParseError,
-    InsufficientPIDDataError, SmartTuneError,
+    InsufficientPIDDataError,
 )
+from smarttune.platform.betaflight import _sanitize_signal
 
 logger = logging.getLogger(__name__)
 
-
 # ---------------------------------------------------------------------------
-# Betaflight 参数映射表
+# INAV 参数映射表
 # ---------------------------------------------------------------------------
 
 _PARAM_MAP_TO_PLATFORM = {
-    # PID gains (BF 4.5+ parameter names)
-    "pid.roll.p":    "p_roll",
-    "pid.roll.i":    "i_roll",
-    "pid.roll.d":    "d_roll",
-    "pid.roll.ff":   "f_roll",
-    "pid.pitch.p":   "p_pitch",
-    "pid.pitch.i":   "i_pitch",
-    "pid.pitch.d":   "d_pitch",
-    "pid.pitch.ff":  "f_pitch",
-    "pid.yaw.p":     "p_yaw",
-    "pid.yaw.i":     "i_yaw",
-    "pid.yaw.d":     "d_yaw",
-    "pid.yaw.ff":    "f_yaw",
-    # BF-specific (BF 4.5+ renamed d_min → d_max)
-    "pid.roll.d_min":    "d_max_roll",
-    "pid.pitch.d_min":   "d_max_pitch",
-    "pid.yaw.d_min":     "d_max_yaw",
-    "pid.anti_gravity":  "anti_gravity_gain",
-    "pid.feedforward_trans": "feedforward_transition",
-    "pid.iterm_relax":   "iterm_relax_cutoff",
-    # Filters (BF 4.5+ naming: gyro_lowpass_hz → gyro_lpf1_static_hz)
-    "filter.gyro_lpf":      "gyro_lpf1_static_hz",
-    "filter.gyro_lpf2":     "gyro_lpf2_static_hz",
-    "filter.dterm_lpf":     "dterm_lpf1_static_hz",
-    "filter.dterm_lpf2":    "dterm_lpf2_static_hz",
-    "filter.notch1.freq":   "gyro_notch1_hz",
-    "filter.notch1.bw":     "gyro_notch1_cutoff",
-    "filter.notch2.freq":   "gyro_notch2_hz",
-    "filter.notch2.bw":     "gyro_notch2_cutoff",
-    # Dynamic notch / RPM filter
-    "filter.dyn_notch_count": "dyn_notch_count",
-    "filter.dyn_notch_q":    "dyn_notch_q",
-    "filter.dyn_notch_min":  "dyn_notch_min_hz",
-    "filter.dyn_notch_max":  "dyn_notch_max_hz",
-    "filter.rpm_harmonics":  "rpm_filter_harmonics",
-    "filter.rpm_min":        "rpm_filter_min_hz",
-}
-
-# Old-format fallback names (for reading logs with older BF firmware)
-_PARAM_MAP_TO_PLATFORM_LEGACY = {
-    "pid.roll.p": "pid_roll_p", "pid.roll.i": "pid_roll_i",
-    "pid.roll.d": "pid_roll_d", "pid.roll.ff": "pid_roll_f",
-    "pid.pitch.p": "pid_pitch_p", "pid.pitch.i": "pid_pitch_i",
-    "pid.pitch.d": "pid_pitch_d", "pid.pitch.ff": "pid_pitch_f",
-    "pid.yaw.p": "pid_yaw_p", "pid.yaw.i": "pid_yaw_i",
-    "pid.yaw.d": "pid_yaw_d", "pid.yaw.ff": "pid_yaw_f",
-    "filter.gyro_lpf": "gyro_lowpass_hz",
-    "filter.gyro_lpf2": "gyro_lowpass2_hz",
-    "filter.dterm_lpf": "dterm_lowpass_hz",
+    "pid.roll.p":    "pid_roll_p",
+    "pid.roll.i":    "pid_roll_i",
+    "pid.roll.d":    "pid_roll_d",
+    "pid.roll.ff":   "pid_roll_f",
+    "pid.pitch.p":   "pid_pitch_p",
+    "pid.pitch.i":   "pid_pitch_i",
+    "pid.pitch.d":   "pid_pitch_d",
+    "pid.pitch.ff":  "pid_pitch_f",
+    "pid.yaw.p":     "pid_yaw_p",
+    "pid.yaw.i":     "pid_yaw_i",
+    "pid.yaw.d":     "pid_yaw_d",
+    "pid.yaw.ff":    "pid_yaw_f",
+    "filter.gyro_lpf": "gyro_lpf_hz",
+    "filter.dterm_lpf": "dterm_lpf_hz",
 }
 
 _PARAM_MAP_TO_GENERIC = {v: k for k, v in _PARAM_MAP_TO_PLATFORM.items()}
-# Merge legacy map into reverse for backward compat
-_PARAM_MAP_TO_GENERIC.update({v: k for k, v in _PARAM_MAP_TO_PLATFORM_LEGACY.items()})
 
-# Betaflight 模式映射
+# INAV 模式映射
 _MODE_MAP = {
+    "MANUAL": "manual",
     "ANGLE": "stabilize",
     "HORIZON": "horizon",
     "ACRO": "acro",
-    "AIR": "acro",
-    "FAILSAFE": "failsafe",
-    "DISARMED": "disarmed",
+    "NAV WP": "auto",
+    "NAV ALTHOLD": "althold",
+    "NAV RTH": "rtl",
+    "NAV CRUISE": "cruise",
 }
 
-
-# ---------------------------------------------------------------------------
-# Blackbox 日志 magic bytes
-# ---------------------------------------------------------------------------
-
 _BBL_MAGIC = b"H Product:Blackbox"
-
-
-# ---------------------------------------------------------------------------
-# BBL field name → FlightData mapping
-# ---------------------------------------------------------------------------
 
 _GYRO_FIELD_NAMES = {
     "roll":  ["gyroADC[0]", "gyroADC_0", "gyroData[0]"],
@@ -132,93 +85,42 @@ _PID_F_FIELDS = {
     "roll": ["axisF[0]"], "pitch": ["axisF[1]"], "yaw": ["axisF[2]"],
 }
 
-_MOTOR_FIELDS = ["motor[0]", "motor[1]", "motor[2]", "motor[3]",
-                 "motor[4]", "motor[5]", "motor[6]", "motor[7]"]
-
 _ACCEL_FIELDS = {
     "x": ["accSmooth[0]", "accData[0]"],
     "y": ["accSmooth[1]", "accData[1]"],
     "z": ["accSmooth[2]", "accData[2]"],
 }
 
-_TIME_FIELD = "time"
+_MOTOR_FIELDS = ["motor[0]", "motor[1]", "motor[2]", "motor[3]",
+                 "motor[4]", "motor[5]", "motor[6]", "motor[7]"]
 
 
 def _resolve_field_name(field_names, candidates):
-    """在字段名列表中找到第一个匹配项。"""
     for name in candidates:
         if name in field_names:
             return name
     return None
 
 
-def _sanitize_signal(arr: np.ndarray, max_abs: float = 2000.0) -> np.ndarray:
-    """清洗 BBL 解析异常值。
-
-    BBL P-frame 差值编码在帧丢失/损坏时会产生极端跳变值。
-    将超出 ±max_abs 范围的点替换为前后邻值的线性插值。
-
-    Parameters
-    ----------
-    arr : np.ndarray
-        原始信号（deg/s 或其他物理量）。
-    max_abs : float
-        合理范围上界（默认 2000，适用于陀螺仪/setpoint deg/s）。
-
-    Returns
-    -------
-    np.ndarray
-        清洗后的信号（原数组不被修改）。
-    """
-    out = arr.copy()
-    bad_mask = np.abs(out) > max_abs
-    n_bad = int(np.sum(bad_mask))
-    if n_bad == 0:
-        return out
-
-    # 用线性插值替换异常点
-    good_mask = ~bad_mask
-    good_idx = np.where(good_mask)[0]
-    if len(good_idx) < 2:
-        # 几乎全坏，返回零
-        out[bad_mask] = 0.0
-        return out
-
-    bad_idx = np.where(bad_mask)[0]
-    out[bad_idx] = np.interp(bad_idx, good_idx, out[good_idx])
-
-    logger.debug(
-        "Sanitized %d outlier samples (%.2f%%) from signal (max_abs=%.0f)",
-        n_bad, n_bad / len(arr) * 100, max_abs,
-    )
-    return out
-
-
-# ---------------------------------------------------------------------------
-# BetaflightAdapter
-# ---------------------------------------------------------------------------
-
 @register
-class BetaflightAdapter(PlatformAdapter):
-    """Betaflight Blackbox 日志适配器。"""
+class INAVAdapter(PlatformAdapter):
+    """INAV Blackbox 日志适配器。"""
 
     @property
     def name(self) -> str:
-        return "betaflight"
+        return "inav"
 
     @property
     def display_name(self) -> str:
-        return "Betaflight"
+        return "INAV"
 
     @property
     def supported_extensions(self) -> list[str]:
         return [".bbl", ".bfl", ".txt"]
 
-    # ── 检测 ────────────────────────────────────────────────
-
     @classmethod
     def detect(cls, path: Path) -> bool:
-        """检测是否为 Betaflight Blackbox 日志。"""
+        """检测是否为 INAV Blackbox 日志。"""
         if not path.is_file():
             return False
 
@@ -229,28 +131,13 @@ class BetaflightAdapter(PlatformAdapter):
         try:
             with open(path, "rb") as f:
                 header = f.read(16384)
-            # 必须包含 BBL 幻数，但不能包含 "INAV" 标识（由 INAVAdapter 识别）
-            return _BBL_MAGIC in header and b"INAV" not in header
+            # 必须包含 BBL 幻数且包含 INAV 标识
+            return _BBL_MAGIC in header and b"INAV" in header
         except (OSError, IOError):
             return False
 
-    # ── 解析 ────────────────────────────────────────────────
-
     def parse(self, path: Path, segment_index: int = 0) -> FlightData:
-        """解析 Betaflight Blackbox 日志 → FlightData。
-
-        Parameters
-        ----------
-        path : Path
-            BBL 日志文件路径
-        segment_index : int
-            要解析的飞行段索引 (BBL 文件可含多段飞行, 默认第 0 段)
-
-        Returns
-        -------
-        FlightData
-            填充了 BF 日志数据的统一飞行数据结构
-        """
+        """解析 INAV Blackbox 日志 → FlightData。"""
         from smarttune.platform.betaflight.bbl_parser import (
             parse_bbl_columnar, get_primary_mode,
             EVENT_FLIGHT_MODE, BBLColumnarSegment,
@@ -273,20 +160,18 @@ class BetaflightAdapter(PlatformAdapter):
 
         if _BBL_MAGIC not in data[:128]:
             raise LogFileCorruptError(
-                message="Not a valid Betaflight Blackbox log",
-                hint="Ensure this is a .bbl/.bfl file from Betaflight.",
+                message="Not a valid Blackbox log",
+                hint="Ensure this is a .bbl/.bfl file.",
             )
 
-        # 解析 BBL 数据 — memory-efficient columnar path
         try:
             segments = parse_bbl_columnar(data, max_segments=10)
         except Exception as exc:
             raise ParseError(
-                message=f"BBL parse failed: {exc}",
+                message=f"INAV BBL parse failed: {exc}",
                 hint="The log file may be corrupted or use an unsupported format version.",
             )
 
-        # Free the raw bytes now that parsing is done
         del data
 
         if not segments:
@@ -313,7 +198,6 @@ class BetaflightAdapter(PlatformAdapter):
                 hint="The flight recording may have been too short.",
             )
 
-        # Concatenate columns from all segments into single arrays
         if len(column_chunks) == 1:
             merged_columns = column_chunks[0].columns
             merged_ft = column_chunks[0].frame_types
@@ -337,15 +221,7 @@ class BetaflightAdapter(PlatformAdapter):
             except (ValueError, TypeError):
                 pass
 
-        # A2 契约：注入 generic key（pid.roll.p 等）供平台无关分析器读取当前值。
-        # 兼顾 BF 4.5+ 新名（p_roll）与旧固件名（pid_roll_p）。旧实现只存原生名，
-        # 导致 PIDReviewer._get_current_pid 恒返回 0.0，叠加 C4 后 PID 建议被全丢弃。
-        for _gmap in (_PARAM_MAP_TO_PLATFORM, _PARAM_MAP_TO_PLATFORM_LEGACY):
-            for _generic, _plat in _gmap.items():
-                if _plat in params and _generic not in params:
-                    params[_generic] = params[_plat]
-
-        # Parse old-style compound PID parameters (e.g. rollPID: 71,127,67)
+        # Parse old-style compound PID parameters (e.g. rollPID: 71,127,67,90)
         for axis in ("roll", "pitch", "yaw"):
             prop_name = f"{axis}PID"
             if prop_name in header.properties:
@@ -360,26 +236,18 @@ class BetaflightAdapter(PlatformAdapter):
                     except ValueError:
                         pass
 
-        # Parse compound d_min values (e.g. d_min: 67,76,0)
-        if "d_min" in header.properties:
-            parts = header.properties["d_min"].split(",")
-            if len(parts) >= 3:
-                try:
-                    params["pid.roll.d_min"] = float(parts[0])
-                    params["pid.pitch.d_min"] = float(parts[1])
-                    params["pid.yaw.d_min"] = float(parts[2])
-                except ValueError:
-                    pass
+        # Inject generic keys into params dictionary
+        for _generic, _plat in _PARAM_MAP_TO_PLATFORM.items():
+            if _plat in params and _generic not in params:
+                params[_generic] = params[_plat]
 
-
-        # ── 计算时间序列 ────────────────────────────
-        loop_rate_hz = params.get("looptime", 250)
+        # Calculate time series
+        loop_rate_hz = params.get("looptime", 500)
         if loop_rate_hz > 100:
             sample_rate_hz = 1_000_000.0 / loop_rate_hz
         else:
             sample_rate_hz = loop_rate_hz
 
-        # Account for P interval
         p_interval_str = header.properties.get("P interval", "")
         if '/' in p_interval_str:
             try:
@@ -401,7 +269,6 @@ class BetaflightAdapter(PlatformAdapter):
         dt_s = 1.0 / sample_rate_hz
         timestamps_s = np.arange(n_frames, dtype=np.float64) * dt_s
 
-        # ── Helper to get a column as float64 ──────────
         def _col_f64(name: str) -> Optional[np.ndarray]:
             arr = merged_columns.get(name)
             if arr is not None:
@@ -421,17 +288,8 @@ class BetaflightAdapter(PlatformAdapter):
             actual = _col_f64(gyro_name) if gyro_name else np.zeros(n_frames)
             desired = _col_f64(sp_name) if sp_name else np.zeros(n_frames)
 
-            rate_limit = 2000.0
-            try:
-                rl_str = header.properties.get("rate_limits", "1998,1998,1998")
-                rl_vals = [int(x) for x in rl_str.split(',')]
-                axis_idx = {"roll": 0, "pitch": 1, "yaw": 2}[axis]
-                if axis_idx < len(rl_vals):
-                    rate_limit = float(rl_vals[axis_idx]) * 1.1
-            except (ValueError, IndexError):
-                pass
-            actual = _sanitize_signal(actual, max_abs=rate_limit)
-            desired = _sanitize_signal(desired, max_abs=rate_limit)
+            actual = _sanitize_signal(actual, max_abs=2000.0)
+            desired = _sanitize_signal(desired, max_abs=2000.0)
 
             p_name = _resolve_field_name(available_fields, _PID_P_FIELDS[axis])
             i_name = _resolve_field_name(available_fields, _PID_I_FIELDS[axis])
@@ -464,8 +322,9 @@ class BetaflightAdapter(PlatformAdapter):
             gy = _sanitize_signal(_col_f64(gyro_y_name), max_abs=2000.0)
             gz = _sanitize_signal(_col_f64(gyro_z_name), max_abs=2000.0)
             gyro = np.column_stack([gx, gy, gz])
-            del gx, gy, gz  # free intermediates
+            del gx, gy, gz
 
+        # ── 提取加速度并进行降噪清洗 ─────────────────────────────
         acc_x_name = _resolve_field_name(available_fields, _ACCEL_FIELDS["x"])
         acc_y_name = _resolve_field_name(available_fields, _ACCEL_FIELDS["y"])
         acc_z_name = _resolve_field_name(available_fields, _ACCEL_FIELDS["z"])
@@ -475,11 +334,11 @@ class BetaflightAdapter(PlatformAdapter):
             ax = _col_f64(acc_x_name)
             ay = _col_f64(acc_y_name)
             az = _col_f64(acc_z_name)
-            acc_1g_raw = params.get("acc_1G", 256)
+            acc_1g_raw = params.get("acc_1G", 2048)
             try:
                 acc_1g_raw = int(acc_1g_raw)
             except (ValueError, TypeError):
-                acc_1g_raw = 256
+                acc_1g_raw = 2048
             
             # 清洗加速度计中由于 delta 编码解码损坏导致的极端跳变值 (限制在 16G 范围内)
             max_acc_abs = 16.0 * acc_1g_raw
@@ -490,24 +349,14 @@ class BetaflightAdapter(PlatformAdapter):
             accel = np.column_stack([ax, ay, az]) * (9.80665 / acc_1g_raw)
             del ax, ay, az
 
-        # ── 提取电机输出 ────────────────────────────
+        # ── 提取电机/舵机输出 ────────────────────────────
         motor_output = None
         motor_names = [m for m in _MOTOR_FIELDS if m in available_fields]
         if motor_names:
             motor_cols = [_col_f64(mn) for mn in motor_names]
-            motor_raw = np.column_stack(motor_cols)
+            motor_output = np.column_stack(motor_cols)
             del motor_cols
-            minthrottle = params.get("minthrottle", 1070)
-            maxthrottle = params.get("maxthrottle", 2000)
-            throttle_range = maxthrottle - minthrottle
-            if throttle_range > 0:
-                motor_output = np.clip(
-                    (motor_raw - minthrottle) / throttle_range, 0.0, 1.0)
-            else:
-                motor_output = motor_raw
-            del motor_raw
 
-        # Free the merged columns now that we've extracted everything
         i_frame_count = int(np.sum(merged_ft == FRAME_TYPE_I))
         p_frame_count = int(np.sum(merged_ft == FRAME_TYPE_P))
         del merged_columns, merged_ft
@@ -529,7 +378,7 @@ class BetaflightAdapter(PlatformAdapter):
         duration_s = float(timestamps_s[-1]) if len(timestamps_s) > 1 else 0.0
 
         flight_data = FlightData(
-            platform="betaflight",
+            platform="inav",
             firmware_version=header.firmware_revision,
             board_name=header.board_info or "",
             log_file=str(path),
@@ -554,18 +403,19 @@ class BetaflightAdapter(PlatformAdapter):
             },
         )
 
-        if motor_output is not None:
-            n_motors = motor_output.shape[1]
-            if n_motors <= 4:
-                flight_data.frame_type = "quad"
-            elif n_motors == 6:
-                flight_data.frame_type = "hex"
-            elif n_motors == 8:
-                flight_data.frame_type = "octo"
+        # ── 自动检测机型 (Fixed-Wing vs Multirotor) ──────────
+        is_fixed_wing = False
+        for f in available_fields:
+            if f.startswith("servo") or f.startswith("fw"):
+                is_fixed_wing = True
+                break
+        
+        if is_fixed_wing:
+            flight_data.frame_type = "fixed_wing"
+        else:
+            flight_data.frame_type = "quad"  # Multirotor default
 
         return flight_data
-
-    # ── 参数映射 ────────────────────────────────────────────
 
     def map_param_to_platform(self, generic_name: str) -> str:
         return _PARAM_MAP_TO_PLATFORM.get(generic_name, generic_name)
@@ -573,11 +423,9 @@ class BetaflightAdapter(PlatformAdapter):
     def map_param_to_generic(self, platform_name: str) -> str:
         return _PARAM_MAP_TO_GENERIC.get(platform_name, platform_name)
 
-    # ── 能力 ────────────────────────────────────────────────
-
     def capabilities(self) -> Set[str]:
         return {"pid", "fft", "filter", "hardware", "quality"}
 
     def param_table(self):
         from smarttune.platform.params import ParamTable
-        return ParamTable.from_knowledge("betaflight")
+        return ParamTable.from_knowledge("inav")

@@ -440,18 +440,12 @@ class PIDReviewer:
 
         # 1. 时域阶跃响应指标
         metrics = self._compute_avg_metrics(sig)
-        thresholds = self._thresholds.get(axis, {})
-        assessment = _assess_metrics(metrics, thresholds)
 
-        # 2. 参数建议
-        current_params = self._get_current_pid(flight_data.params, axis)
-        recommendations = self._generate_recommendations(metrics, current_params, thresholds, axis)
-
-        # 3. Step count
+        # 2. Step count
         step_indices = detect_steps(sig.desired, dt_ms=dt_ms)
         step_count = len(step_indices)
 
-        # 4. 频域阶跃响应（按平台动态分派）
+        # 3. 频域阶跃响应（按平台动态分派）
         #    platform/ardupilot/step_response_fft.py  → WebTools 对齐
         #    platform/betaflight/step_response_fft.py  → PID Toolbox PTstepcalc 对齐
         #    platform/px4/step_response_fft.py         → 复用 AP（WebTools 对齐）
@@ -499,7 +493,7 @@ class PIDReviewer:
                     "GyrZ": flight_data.gyro[:, 2],
                 }
 
-            _VALID_PLATFORMS = {"ardupilot", "betaflight", "px4"}
+            _VALID_PLATFORMS = {"ardupilot", "betaflight", "px4", "inav"}
             platform_key = flight_data.platform.lower()
             if platform_key not in _VALID_PLATFORMS:
                 _log.warning(
@@ -507,6 +501,8 @@ class PIDReviewer:
                     "expected one of %s", flight_data.platform, _VALID_PLATFORMS,
                 )
             else:
+                if platform_key == "inav":
+                    platform_key = "betaflight"
                 try:
                     mod = importlib.import_module(
                         f"smarttune.platform.{platform_key}.step_response_fft"
@@ -528,6 +524,48 @@ class PIDReviewer:
                 except Exception as exc:
                     _log.debug("FFT step response failed for %s: %s", axis, exc)
 
+        # Fallback to computing metrics from FFT step response if time-domain metrics are empty
+        if metrics.rise_time_ms < 0 and fft_step and "step_response" in fft_step:
+            fft_resp = np.array(fft_step["step_response"])
+            fft_time_s = np.array(fft_step["time_s"])
+            if len(fft_resp) > 5:
+                final_val = float(np.mean(fft_resp[-5:]))
+                if abs(final_val) > 1e-6:
+                    norm = fft_resp / final_val
+                    try:
+                        idx_10 = np.where(norm >= 0.10)[0][0]
+                        idx_90 = np.where(norm >= 0.90)[0][0]
+                        metrics.rise_time_ms = float(fft_time_s[idx_90] - fft_time_s[idx_10]) * 1000.0
+                    except (IndexError, ValueError):
+                        metrics.rise_time_ms = -1.0
+                    
+                    overshoot_val = float(np.max(fft_resp) - final_val)
+                    metrics.overshoot_percent = max(0.0, (overshoot_val / final_val) * 100.0)
+                    
+                    settle_threshold = 0.05
+                    in_band = np.abs(norm - 1.0) <= settle_threshold
+                    metrics.settling_time_ms = -1.0
+                    if in_band.size > 0 and in_band[-1]:
+                        suffix_in_band = np.argmax(in_band[::-1].astype(np.int8) ^ 1)
+                        if suffix_in_band == 0 and in_band.all():
+                            first_idx = 0
+                        else:
+                            first_idx = len(in_band) - suffix_in_band
+                        metrics.settling_time_ms = float(fft_time_s[first_idx]) * 1000.0
+                    
+                    centered = fft_resp - final_val
+                    crossings = np.diff(np.sign(centered))
+                    zero_crossings = int(np.sum(np.abs(crossings) > 0))
+                    metrics.oscillation_count = zero_crossings // 2
+                    
+                    metrics.steady_state_error_percent = (abs(final_val - 1.0) / 1.0) * 100.0
+
+        # 4. Assess metrics and generate recommendations using final metrics
+        thresholds = self._thresholds.get(axis, {})
+        assessment = _assess_metrics(metrics, thresholds)
+        current_params = self._get_current_pid(flight_data.params, axis)
+        recommendations = self._generate_recommendations(metrics, current_params, thresholds, axis)
+
         # 5. 原始时间序列（供绘图）
         time_ms = sig.timestamp_s * 1000.0
         raw_data = {
@@ -540,13 +578,15 @@ class PIDReviewer:
         }
 
         # 6. 时域阶跃窗口提取（供每个阶跃单独绘图）
+        w_before = max(2, int(round(12.5 / dt_ms))) if dt_ms > 0 else 5
+        w_after = max(10, int(round(500.0 / dt_ms))) if dt_ms > 0 else 200
         step_responses = []
         for idx in step_indices:
-            is_good, reason = _check_window_quality(sig.actual, sig.desired, idx)
+            is_good, reason = _check_window_quality(sig.actual, sig.desired, idx, window_before=w_before, window_after=w_after)
             if not is_good:
                 continue
             t_rel, act_win, magnitude = _extract_step_response(
-                sig.desired, sig.actual, idx, dt_ms=dt_ms
+                sig.desired, sig.actual, idx, dt_ms=dt_ms, window_before=w_before, window_after=w_after
             )
             t_global = time_ms[idx] + t_rel
             step_responses.append({
@@ -575,6 +615,9 @@ class PIDReviewer:
         if not step_indices:
             return StepMetrics()
 
+        w_before = max(2, int(round(12.5 / dt_ms))) if dt_ms > 0 else 5
+        w_after = max(10, int(round(500.0 / dt_ms))) if dt_ms > 0 else 200
+
         metric_fields = ("rise_time_ms", "overshoot_percent", "settling_time_ms",
                          "oscillation_count", "steady_state_error_percent")
         totals = {f: 0.0 for f in metric_fields}
@@ -583,13 +626,13 @@ class PIDReviewer:
         high_overshoot_count = 0
 
         for idx in step_indices:
-            is_good, reason = _check_window_quality(sig.actual, sig.desired, idx)
+            is_good, reason = _check_window_quality(sig.actual, sig.desired, idx, window_before=w_before, window_after=w_after)
             if not is_good:
                 skipped_quality += 1
                 _log.debug("Skipping step window idx=%d, quality: %s", idx, reason)
                 continue
             t_rel, act_win, magnitude = _extract_step_response(
-                sig.desired, sig.actual, idx, dt_ms=dt_ms
+                sig.desired, sig.actual, idx, dt_ms=dt_ms, window_before=w_before, window_after=w_after
             )
             m = _compute_metrics(act_win, t_rel, magnitude, dt_ms=dt_ms,
                                  settle_band=self._settle_band)
@@ -773,14 +816,16 @@ class PIDReviewer:
         dt_ms = self._estimate_dt_ms(sig)
         step_indices = detect_steps(sig.desired, dt_ms=dt_ms)
         time_ms = sig.timestamp_s * 1000.0
+        w_before = max(2, int(round(12.5 / dt_ms))) if dt_ms > 0 else 5
+        w_after = max(10, int(round(500.0 / dt_ms))) if dt_ms > 0 else 200
 
         steps_out = []
         for idx in step_indices:
-            is_good, _ = _check_window_quality(sig.actual, sig.desired, idx)
+            is_good, _ = _check_window_quality(sig.actual, sig.desired, idx, window_before=w_before, window_after=w_after)
             if not is_good:
                 continue
             t_rel, act_win, magnitude = _extract_step_response(
-                sig.desired, sig.actual, idx, dt_ms=dt_ms
+                sig.desired, sig.actual, idx, dt_ms=dt_ms, window_before=w_before, window_after=w_after
             )
             t_global = time_ms[idx] + t_rel
             steps_out.append({

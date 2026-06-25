@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 def load_flight_data(
     log_path: Path,
     platform: str = "auto",
+    vehicle_type: Optional[str] = None,
 ) -> Tuple[PlatformAdapter, FlightData]:
     """Parse a flight log and return the adapter + unified FlightData.
 
@@ -60,6 +61,8 @@ def load_flight_data(
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
     adapter = resolve_adapter(platform, _lp)
     flight_data = adapter.parse(_lp)
+    if vehicle_type:
+        flight_data.frame_type = vehicle_type
     return adapter, flight_data
 
 
@@ -70,6 +73,7 @@ def load_flight_data(
 def get_log_quality(
     log_path: Path,
     platform: str = "auto",
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Parse a log and return a quality assessment dict.
 
@@ -80,7 +84,7 @@ def get_log_quality(
       4. Sample rate consistency (jitter, drop rate)
     """
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
 
     issues: List[str] = []
     score = 100
@@ -293,6 +297,8 @@ def run_module(
     if kb is None:
         kb = KnowledgeBase(platform=adapter.name)
 
+    kb.resolve_inav_rules(fd.frame_type)
+
     if module == "pid":
         if not fd.pid:
             raise SmartTuneError(
@@ -361,10 +367,11 @@ def analyze_pid(
     platform: str = "auto",
     axis: str = "all",
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run PID step response analysis. Matches ``stune pid``."""
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
     result = run_module("pid", adapter, fd, axis=axis)
 
     return {
@@ -380,10 +387,11 @@ def analyze_fft(
     log_path: Path,
     platform: str = "auto",
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run FFT vibration spectrum analysis. Matches ``stune fft``."""
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
     result = run_module("fft", adapter, fd)
 
     return {
@@ -399,10 +407,11 @@ def analyze_magfit(
     log_path: Path,
     platform: str = "auto",
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run magnetometer calibration analysis. Matches ``stune magfit``."""
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
     result = run_module("magfit", adapter, fd)
 
     return {
@@ -420,10 +429,11 @@ def analyze_sysid(
     axis: str = "all",
     na: int = 3,
     nb: int = 2,
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run ARX system identification. Matches ``stune sysid``."""
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
     results = run_module("sysid", adapter, fd, axis=axis, na=na, nb=nb)
 
     if not results:
@@ -449,6 +459,7 @@ def analyze_filter(
     notch_freq_hz: Optional[float] = None,
     auto_derive: bool = True,
     _include_bode_data: bool = False,
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run filter transfer function analysis (Bode plot data). Matches ``stune filter``.
 
@@ -460,7 +471,7 @@ def analyze_filter(
         Not exposed to MCP callers directly.
     """
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
 
     if "filter" not in adapter.capabilities():
         raise SmartTuneError(
@@ -562,10 +573,11 @@ def analyze_filter(
 def analyze_hardware(
     log_path: Path,
     platform: str = "auto",
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run hardware configuration report. Matches ``stune hardware``."""
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
     report = run_module("hardware", adapter, fd)
 
     return {
@@ -587,6 +599,7 @@ def analyze_log(
     axis: str = "all",
     include_modules: Optional[List[str]] = None,
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run comprehensive analysis and return a structured result dict.
 
@@ -611,7 +624,7 @@ def analyze_log(
         and safety metadata.
     """
     _lp = Path(log_path) if isinstance(log_path, str) else log_path
-    adapter, fd = load_flight_data(_lp, platform)
+    adapter, fd = load_flight_data(_lp, platform, vehicle_type)
     capabilities = adapter.capabilities()
     kb = KnowledgeBase(platform=adapter.name)
 

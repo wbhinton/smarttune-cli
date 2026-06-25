@@ -32,14 +32,14 @@ def allow_tmp(monkeypatch, tmp_path):
 class TestAllowedExtensions:
     """Verify that allowed extensions are accepted and others rejected."""
 
-    @pytest.mark.parametrize("ext", [".bin", ".log", ".bbl", ".bfl", ".ulg"])
+    @pytest.mark.parametrize("ext", [".bin", ".log", ".bbl", ".bfl", ".ulg", ".txt"])
     def test_allowed_extension_accepted(self, tmp_path, ext):
         f = tmp_path / f"flight{ext}"
         f.write_bytes(b"\x00" * 512)
         result = validate_log_path(str(f))
         assert result.is_file()
 
-    @pytest.mark.parametrize("ext", [".txt", ".csv", ".py", ".json", ".exe", ".sh", ".zip"])
+    @pytest.mark.parametrize("ext", [".csv", ".py", ".json", ".exe", ".sh", ".zip"])
     def test_disallowed_extension_rejected(self, tmp_path, ext):
         f = tmp_path / f"flight{ext}"
         f.write_bytes(b"\x00" * 512)

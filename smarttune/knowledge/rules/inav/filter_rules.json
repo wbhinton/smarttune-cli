@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "source": "inav-filter-tuning",
+  "description": "INAV filter and vibration rules",
+  "fixed_wing_vibration_thresholds": {
+    "unit": "m/s/s RMS",
+    "levels": [
+      {"level": "EXCELLENT", "range": [0, 5.0], "action": "Vibration is very low."},
+      {"level": "GOOD",      "range": [5.0, 15.0], "action": "Vibration is normal."},
+      {"level": "MARGINAL",  "range": [15.0, 30.0], "action": "Check motor and propeller balance."},
+      {"level": "POOR",      "range": [30.0, 50.0], "action": "Significant vibration. Inspect airframe rigidity."},
+      {"level": "CRITICAL",  "range": [50.0, 9999], "action": "High risk of servo/sensor issues. Check mechanics."}
+    ]
+  },
+  "multirotor_vibration_thresholds": {
+    "unit": "m/s/s RMS",
+    "levels": [
+      {"level": "EXCELLENT", "range": [0, 3.0], "action": "Vibration is very low."},
+      {"level": "GOOD",      "range": [3.0, 10.0], "action": "Vibration is normal."},
+      {"level": "MARGINAL",  "range": [10.0, 20.0], "action": "Check motor/propeller balance."},
+      {"level": "POOR",      "range": [20.0, 30.0], "action": "Significant vibration. Inspect frame and motors."},
+      {"level": "CRITICAL",  "range": [30.0, 9999], "action": "High risk of D-term heating. Ground vehicle."}
+    ]
+  }
+}

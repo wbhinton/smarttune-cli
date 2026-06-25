@@ -97,3 +97,29 @@ class KnowledgeBase:
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._rules.get(key, default)
+
+    def resolve_inav_rules(self, frame_type: Optional[str]) -> None:
+        """Resolve INAV specific rules based on frame/vehicle type."""
+        if self.platform != "inav":
+            return
+        
+        # 1. Resolve pid_rules
+        pid_rules = self.get("pid_rules", {})
+        if pid_rules:
+            if frame_type in ("multirotor", "quad", "hex", "octo"):
+                pid_rules = {**pid_rules, "thresholds": pid_rules.get("multirotor_thresholds", {})}
+            else:
+                pid_rules = {**pid_rules, "thresholds": pid_rules.get("fixed_wing_thresholds", {})}
+            self._rules["pid_rules"] = pid_rules
+
+        # 2. Resolve filter_rules
+        filter_rules = self.get("filter_rules", {})
+        if filter_rules:
+            if frame_type in ("multirotor", "quad", "hex", "octo"):
+                if "multirotor_vibration_thresholds" in filter_rules:
+                    filter_rules = {**filter_rules, "vibration_thresholds": filter_rules["multirotor_vibration_thresholds"]}
+            else:
+                if "fixed_wing_vibration_thresholds" in filter_rules:
+                    filter_rules = {**filter_rules, "vibration_thresholds": filter_rules["fixed_wing_vibration_thresholds"]}
+            self._rules["filter_rules"] = filter_rules
+

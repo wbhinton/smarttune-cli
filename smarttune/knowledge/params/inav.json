@@ -1,0 +1,179 @@
+{
+  "platform": "INAV",
+  "version": "9.x (master)",
+  "generated_at": "2026-06-25",
+  "source": "INAV settings schema",
+  "count": 20,
+  "parameters": [
+    {
+      "name": "p_roll",
+      "category": "pid",
+      "type": "int",
+      "default": 40,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Roll P gain"
+    },
+    {
+      "name": "i_roll",
+      "category": "pid",
+      "type": "int",
+      "default": 30,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Roll I gain"
+    },
+    {
+      "name": "d_roll",
+      "category": "pid",
+      "type": "int",
+      "default": 23,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Roll D gain"
+    },
+    {
+      "name": "f_roll",
+      "category": "pid",
+      "type": "int",
+      "default": 60,
+      "min": 0,
+      "max": 1000,
+      "unit": "",
+      "description": "Roll feedforward"
+    },
+    {
+      "name": "p_pitch",
+      "category": "pid",
+      "type": "int",
+      "default": 40,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Pitch P gain"
+    },
+    {
+      "name": "i_pitch",
+      "category": "pid",
+      "type": "int",
+      "default": 30,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Pitch I gain"
+    },
+    {
+      "name": "d_pitch",
+      "category": "pid",
+      "type": "int",
+      "default": 23,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Pitch D gain"
+    },
+    {
+      "name": "f_pitch",
+      "category": "pid",
+      "type": "int",
+      "default": 60,
+      "min": 0,
+      "max": 1000,
+      "unit": "",
+      "description": "Pitch feedforward"
+    },
+    {
+      "name": "p_yaw",
+      "category": "pid",
+      "type": "int",
+      "default": 40,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Yaw P gain"
+    },
+    {
+      "name": "i_yaw",
+      "category": "pid",
+      "type": "int",
+      "default": 30,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Yaw I gain"
+    },
+    {
+      "name": "d_yaw",
+      "category": "pid",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 250,
+      "unit": "",
+      "description": "Yaw D gain"
+    },
+    {
+      "name": "f_yaw",
+      "category": "pid",
+      "type": "int",
+      "default": 60,
+      "min": 0,
+      "max": 1000,
+      "unit": "",
+      "description": "Yaw feedforward"
+    },
+    {
+      "name": "gyro_lpf_hz",
+      "category": "filter",
+      "type": "int",
+      "default": 125,
+      "min": 0,
+      "max": 1000,
+      "unit": "Hz",
+      "description": "Gyro lowpass filter frequency"
+    },
+    {
+      "name": "dterm_lpf_hz",
+      "category": "filter",
+      "type": "int",
+      "default": 100,
+      "min": 0,
+      "max": 1000,
+      "unit": "Hz",
+      "description": "D-term lowpass filter frequency"
+    },
+    {
+      "name": "yaw_lpf_hz",
+      "category": "filter",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 1000,
+      "unit": "Hz",
+      "description": "Yaw lowpass filter frequency"
+    },
+    {
+      "name": "dynamicGyroNotchQ",
+      "category": "filter",
+      "type": "int",
+      "default": 250,
+      "min": 1,
+      "max": 1000,
+      "unit": "",
+      "description": "Dynamic gyro notch filter Q factor"
+    },
+    {
+      "name": "dynamicGyroNotchMinHz",
+      "category": "filter",
+      "type": "int",
+      "default": 30,
+      "min": 10,
+      "max": 500,
+      "unit": "Hz",
+      "description": "Dynamic gyro notch filter minimum frequency"
+    }
+  ]
+}

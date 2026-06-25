@@ -50,7 +50,7 @@ _DEFAULT_ALLOWED_ROOTS = [
     Path("/tmp"),
 ]
 
-_ALLOWED_EXTENSIONS = {".bin", ".log", ".bbl", ".bfl", ".ulg"}
+_ALLOWED_EXTENSIONS = {".bin", ".log", ".bbl", ".bfl", ".ulg", ".txt"}
 
 
 def _get_max_file_mb() -> float:
@@ -411,6 +411,7 @@ def smarttune_list_platforms() -> str:
 def smarttune_log_quality(
     log_path: str,
     platform: str = "auto",
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """Assess flight log data quality for analysis.
 
@@ -421,9 +422,10 @@ def smarttune_log_quality(
     Args:
         log_path: Path to a flight log file (.bin, .log, .bbl, .bfl, .ulg).
         platform: Platform override — "auto" (default), "ardupilot", "betaflight", or "px4".
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     from smarttune.services.analysis import get_log_quality
-    return _call_service(get_log_quality, log_path, platform=platform)
+    return _call_service(get_log_quality, log_path, platform=platform, vehicle_type=vehicle_type)
 
 
 # ── 3. Comprehensive Analysis ─────────────────────────────────
@@ -436,6 +438,7 @@ def smarttune_analyze_log(
     include_modules: Optional[List[str]] = None,
     response_format: str = "json",
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """Run comprehensive flight log analysis and return structured recommendations.
 
@@ -450,6 +453,7 @@ def smarttune_analyze_log(
         include_modules: Subset of ["pid", "fft", "magfit", "hardware", "filter", "sysid"]. None = all available.
         response_format: Output format — "json" (default) or "markdown".
         max_recommendations: Maximum number of parameter recommendations (1–100, default 20).
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     # Clamp max_recommendations
     max_recommendations = max(1, min(100, max_recommendations))
@@ -482,6 +486,7 @@ def smarttune_analyze_log(
             axis=axis,
             include_modules=include_modules,
             max_recommendations=max_recommendations,
+            vehicle_type=vehicle_type,
         )
 
         if response_format == "markdown":
@@ -508,6 +513,7 @@ def smarttune_analyze_pid(
     platform: str = "auto",
     axis: str = "all",
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """PID step response analysis — detect step responses and evaluate tuning quality.
 
@@ -520,6 +526,7 @@ def smarttune_analyze_pid(
         platform: Platform override — "auto", "ardupilot", "betaflight", or "px4".
         axis: Axis to analyze — "all" (default), "roll", "pitch", or "yaw".
         max_recommendations: Maximum parameter recommendations (1–100, default 20).
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     if axis not in ("all", "roll", "pitch", "yaw"):
         return json.dumps({"error": f"Invalid axis: {axis!r}. Must be all, roll, pitch, or yaw."})
@@ -529,6 +536,7 @@ def smarttune_analyze_pid(
         analyze_pid, log_path,
         platform=platform, axis=axis,
         max_recommendations=max(1, min(100, max_recommendations)),
+        vehicle_type=vehicle_type,
     )
 
 
@@ -539,6 +547,7 @@ def smarttune_analyze_fft(
     log_path: str,
     platform: str = "auto",
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """FFT vibration spectrum analysis — identify vibration frequencies and severity.
 
@@ -550,12 +559,14 @@ def smarttune_analyze_fft(
         log_path: Path to a flight log file (.bin, .log, .bbl, .bfl, .ulg).
         platform: Platform override — "auto", "ardupilot", "betaflight", or "px4".
         max_recommendations: Maximum parameter recommendations (1–100, default 20).
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     from smarttune.services.analysis import analyze_fft
     return _call_service(
         analyze_fft, log_path,
         platform=platform,
         max_recommendations=max(1, min(100, max_recommendations)),
+        vehicle_type=vehicle_type,
     )
 
 
@@ -566,6 +577,7 @@ def smarttune_analyze_magfit(
     log_path: str,
     platform: str = "auto",
     max_recommendations: int = 20,
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """Magnetometer calibration analysis — evaluate compass calibration quality.
 
@@ -577,12 +589,14 @@ def smarttune_analyze_magfit(
         log_path: Path to a flight log file (.bin, .log, .bbl, .bfl, .ulg).
         platform: Platform override — "auto", "ardupilot", "betaflight", or "px4".
         max_recommendations: Maximum parameter recommendations (1–100, default 20).
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     from smarttune.services.analysis import analyze_magfit
     return _call_service(
         analyze_magfit, log_path,
         platform=platform,
         max_recommendations=max(1, min(100, max_recommendations)),
+        vehicle_type=vehicle_type,
     )
 
 
@@ -595,6 +609,7 @@ def smarttune_analyze_sysid(
     axis: str = "all",
     na: int = 3,
     nb: int = 2,
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """ARX system identification — estimate transfer function from flight data.
 
@@ -607,6 +622,7 @@ def smarttune_analyze_sysid(
         axis: Axis to analyze — "all" (default), "roll", "pitch", or "yaw".
         na: ARX model A polynomial order (default 3).
         nb: ARX model B polynomial order (default 2).
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     if axis not in ("all", "roll", "pitch", "yaw"):
         return json.dumps({"error": f"Invalid axis: {axis!r}. Must be all, roll, pitch, or yaw."})
@@ -617,6 +633,7 @@ def smarttune_analyze_sysid(
     return _call_service(
         analyze_sysid, log_path,
         platform=platform, axis=axis, na=na, nb=nb,
+        vehicle_type=vehicle_type,
     )
 
 
@@ -629,6 +646,7 @@ def smarttune_analyze_filter(
     gyro_filter_hz: Optional[float] = None,
     notch_freq_hz: Optional[float] = None,
     auto_derive: bool = True,
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """Filter transfer function analysis (Bode plot data).
 
@@ -645,6 +663,7 @@ def smarttune_analyze_filter(
         gyro_filter_hz: Override GYRO_FILTER cutoff frequency (Hz). Switches to manual mode.
         notch_freq_hz: Specify Notch center frequency (Hz). Switches to manual mode.
         auto_derive: Auto-derive filter config from log parameters (default: true).
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     from smarttune.services.analysis import analyze_filter
     return _call_service(
@@ -653,6 +672,7 @@ def smarttune_analyze_filter(
         gyro_filter_hz=gyro_filter_hz,
         notch_freq_hz=notch_freq_hz,
         auto_derive=auto_derive,
+        vehicle_type=vehicle_type,
     )
 
 
@@ -662,6 +682,7 @@ def smarttune_analyze_filter(
 def smarttune_analyze_hardware(
     log_path: str,
     platform: str = "auto",
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """Hardware configuration report — sensor setup, filter config, PID parameters.
 
@@ -671,9 +692,10 @@ def smarttune_analyze_hardware(
     Args:
         log_path: Path to a flight log file (.bin, .log, .bbl, .bfl, .ulg).
         platform: Platform override — "auto", "ardupilot", "betaflight", or "px4".
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     from smarttune.services.analysis import analyze_hardware
-    return _call_service(analyze_hardware, log_path, platform=platform)
+    return _call_service(analyze_hardware, log_path, platform=platform, vehicle_type=vehicle_type)
 
 
 # ── 10. Plot Generation ──────────────────────────────────────────
@@ -685,6 +707,7 @@ def smarttune_generate_plot(
     platform: str = "auto",
     axis: str = "all",
     theme: str = "light",
+    vehicle_type: Optional[str] = None,
 ) -> str:
     """Generate an analysis chart as a base64 PNG image.
 
@@ -702,6 +725,7 @@ def smarttune_generate_plot(
         platform: Platform override — "auto", "ardupilot", "betaflight", or "px4".
         axis: Axis for PID plot — "all" (default), "roll", "pitch", or "yaw".
         theme: Color theme — "light" (default) or "dark".
+        vehicle_type: Vehicle type override for INAV logs ("fixed_wing" or "multirotor").
     """
     if plot_type not in ("pid", "fft", "filter"):
         return json.dumps({"error": f"Invalid plot_type: {plot_type!r}. Must be pid, fft, or filter."})
@@ -714,6 +738,7 @@ def smarttune_generate_plot(
     return _call_service(
         generate_plot, log_path,
         platform=platform, plot_type=plot_type, axis=axis, theme=theme,
+        vehicle_type=vehicle_type,
     )
 
 

@@ -120,8 +120,11 @@ def platforms():
               default="all", help="Axis to analyze")
 @click.option("--theme", type=click.Choice(["light", "dark"], case_sensitive=False),
               default="light", help="Plot theme: light (default) or dark")
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
 def analyze(log_file: Path, platform_name: str, output_file: Optional[Path],
-            report_format: Optional[str], visual: bool, axis: str, theme: str):
+            report_format: Optional[str], visual: bool, axis: str, theme: str,
+            vehicle_type: Optional[str]):
     """Comprehensive log analysis — PID + FFT + filter + mag recommendations."""
     try:
         adapter = resolve_adapter(platform_name, log_file)
@@ -148,6 +151,8 @@ def analyze(log_file: Path, platform_name: str, output_file: Optional[Path],
         p_parse = progress.add_task("[cyan]Parsing log...", total=None)
         try:
             flight_data = adapter.parse(log_file)
+            if vehicle_type:
+                flight_data.frame_type = vehicle_type
             progress.update(p_parse, completed=True,
                             description=f"[green]✓ Parsed {flight_data.duration_s:.0f}s ({adapter.display_name})")
         except SmartTuneError as exc:
@@ -310,7 +315,9 @@ def analyze(log_file: Path, platform_name: str, output_file: Optional[Path],
               help="Generate step response plots")
 @click.option("--theme", type=click.Choice(["light", "dark"], case_sensitive=False),
               default="light", help="Plot theme: light (default) or dark")
-def pid(log_file: Path, platform_name: str, axis: str, visual: bool, theme: str):
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
+def pid(log_file: Path, platform_name: str, axis: str, visual: bool, theme: str, vehicle_type: Optional[str]):
     """PID step response analysis.
 
     \b
@@ -324,7 +331,7 @@ def pid(log_file: Path, platform_name: str, axis: str, visual: bool, theme: str)
       stune pid -i flight.bin -a roll          # Roll only
       stune pid -i flight.bin -a roll --visual # Roll with plots
     """
-    _run_single_analysis("pid", log_file, platform_name, axis, visual, theme=theme)
+    _run_single_analysis("pid", log_file, platform_name, axis, visual, theme=theme, vehicle_type=vehicle_type)
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +347,9 @@ def pid(log_file: Path, platform_name: str, axis: str, visual: bool, theme: str)
               help="Generate FFT spectrum plot")
 @click.option("--theme", type=click.Choice(["light", "dark"], case_sensitive=False),
               default="light", help="Plot theme: light (default) or dark")
-def fft(log_file: Path, platform_name: str, visual: bool, theme: str):
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
+def fft(log_file: Path, platform_name: str, visual: bool, theme: str, vehicle_type: Optional[str]):
     """FFT vibration spectrum analysis.
 
     \b
@@ -353,7 +362,7 @@ def fft(log_file: Path, platform_name: str, visual: bool, theme: str):
       stune fft -i flight.bin          # Basic analysis
       stune fft -i flight.bin --visual # With spectrum plot
     """
-    _run_single_analysis("fft", log_file, platform_name, "all", visual, theme=theme)
+    _run_single_analysis("fft", log_file, platform_name, "all", visual, theme=theme, vehicle_type=vehicle_type)
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +374,9 @@ def fft(log_file: Path, platform_name: str, visual: bool, theme: str):
               type=click.Path(exists=True, path_type=Path), help="Flight log file")
 @click.option("--platform", "platform_name", default="auto",
               help="Platform: auto, ardupilot, betaflight, px4 (default: auto)")
-def magfit(log_file: Path, platform_name: str):
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
+def magfit(log_file: Path, platform_name: str, vehicle_type: Optional[str]):
     """Magnetometer calibration analysis.
 
     \b
@@ -395,7 +406,9 @@ def magfit(log_file: Path, platform_name: str):
               help="Axis to analyze (default: all)")
 @click.option("--na", type=int, default=3, help="ARX model A polynomial order (default: 3)")
 @click.option("--nb", type=int, default=2, help="ARX model B polynomial order (default: 2)")
-def sysid(log_file: Path, platform_name: str, axis: str, na: int, nb: int):
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
+def sysid(log_file: Path, platform_name: str, axis: str, na: int, nb: int, vehicle_type: Optional[str]):
     """System identification — ARX model parameter estimation.
 
     \b
@@ -408,7 +421,7 @@ def sysid(log_file: Path, platform_name: str, axis: str, na: int, nb: int):
       stune sysid -i flight.bin                  # All axes (na=3, nb=2)
       stune sysid -i flight.bin -a roll --na 4   # Custom ARX order
     """
-    _run_single_analysis("sysid", log_file, platform_name, axis, False, na=na, nb=nb)
+    _run_single_analysis("sysid", log_file, platform_name, axis, False, na=na, nb=nb, vehicle_type=vehicle_type)
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +433,9 @@ def sysid(log_file: Path, platform_name: str, axis: str, na: int, nb: int):
               type=click.Path(exists=True, path_type=Path), help="Flight log file")
 @click.option("--platform", "platform_name", default="auto",
               help="Platform: auto, ardupilot, betaflight, px4 (default: auto)")
-def hardware(log_file: Path, platform_name: str):
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
+def hardware(log_file: Path, platform_name: str, vehicle_type: Optional[str]):
     """Hardware configuration report.
 
     \b
@@ -434,7 +449,7 @@ def hardware(log_file: Path, platform_name: str):
     Example:
       stune hardware -i flight.bin
     """
-    _run_single_analysis("hardware", log_file, platform_name, "all", False)
+    _run_single_analysis("hardware", log_file, platform_name, "all", False, vehicle_type=vehicle_type)
 
 
 # ---------------------------------------------------------------------------
@@ -455,8 +470,11 @@ def hardware(log_file: Path, platform_name: str):
 @click.option("--visual/--no-visual", default=False, help="Generate Bode Plot visualization")
 @click.option("--theme", type=click.Choice(["light", "dark"], case_sensitive=False),
               default="light", help="Plot theme: light (default) or dark")
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
 def filter_cmd(log_file: Path, platform_name: str, gyro_filter: Optional[float],
-               notch_freq: Optional[float], auto: bool, visual: bool, theme: str):
+               notch_freq: Optional[float], auto: bool, visual: bool, theme: str,
+               vehicle_type: Optional[str]):
     """Filter transfer function analysis (Bode Plot).
 
     \b
@@ -488,6 +506,7 @@ def filter_cmd(log_file: Path, platform_name: str, gyro_filter: Optional[float],
                 notch_freq_hz=notch_freq,
                 auto_derive=auto,
                 _include_bode_data=visual,
+                vehicle_type=vehicle_type,
             )
             progress.update(task, completed=True, description="[green]✓ Filter analysis complete")
         except SmartTuneError as exc:
@@ -559,7 +578,9 @@ def filter_cmd(log_file: Path, platform_name: str, gyro_filter: Optional[float],
               help="Platform: auto, ardupilot, betaflight, px4 (default: auto)")
 @click.option("-o", "--output", "output_file", type=click.Path(path_type=Path),
               default=None, help="Output quality report file (optional)")
-def quality(log_file: Path, platform_name: str, output_file: Optional[Path]):
+@click.option("--vehicle-type", type=click.Choice(["fixed_wing", "multirotor"], case_sensitive=False),
+              default=None, help="Vehicle type override for INAV logs")
+def quality(log_file: Path, platform_name: str, output_file: Optional[Path], vehicle_type: Optional[str]):
     """Evaluate log quality — data completeness, excitation, and sample rate scoring.
 
     \b
@@ -584,7 +605,7 @@ def quality(log_file: Path, platform_name: str, output_file: Optional[Path]):
     ) as progress:
         task = progress.add_task("[cyan]Evaluating log quality...", total=None)
         try:
-            result = get_log_quality(log_file, platform=platform_name)
+            result = get_log_quality(log_file, platform=platform_name, vehicle_type=vehicle_type)
             progress.update(task, completed=True, description="[green]✓ Quality evaluation complete")
         except SmartTuneError as exc:
             progress.stop()
@@ -672,7 +693,7 @@ def quality(log_file: Path, platform_name: str, output_file: Optional[Path]):
 
 def _run_single_analysis(capability: str, log_file: Path, platform_name: str,
                          axis: str, visual: bool, theme: str = "light",
-                         na: int = 3, nb: int = 2):
+                         na: int = 3, nb: int = 2, vehicle_type: Optional[str] = None):
     try:
         adapter = resolve_adapter(platform_name, log_file)
     except SmartTuneError as exc:
@@ -698,6 +719,8 @@ def _run_single_analysis(capability: str, log_file: Path, platform_name: str,
         task = progress.add_task("[cyan]Parsing log...", total=None)
         try:
             flight_data = adapter.parse(log_file)
+            if vehicle_type:
+                flight_data.frame_type = vehicle_type
             progress.update(task, completed=True, description="[green]✓ Log parsed")
         except SmartTuneError as exc:
             _fail_in_progress(progress, exc)
