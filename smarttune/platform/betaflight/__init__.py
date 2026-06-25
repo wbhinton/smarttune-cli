@@ -344,6 +344,33 @@ class BetaflightAdapter(PlatformAdapter):
                 if _plat in params and _generic not in params:
                     params[_generic] = params[_plat]
 
+        # Parse old-style compound PID parameters (e.g. rollPID: 71,127,67)
+        for axis in ("roll", "pitch", "yaw"):
+            prop_name = f"{axis}PID"
+            if prop_name in header.properties:
+                parts = header.properties[prop_name].split(",")
+                if len(parts) >= 3:
+                    try:
+                        params[f"pid.{axis}.p"] = float(parts[0])
+                        params[f"pid.{axis}.i"] = float(parts[1])
+                        params[f"pid.{axis}.d"] = float(parts[2])
+                        if len(parts) >= 4:
+                            params[f"pid.{axis}.ff"] = float(parts[3])
+                    except ValueError:
+                        pass
+
+        # Parse compound d_min values (e.g. d_min: 67,76,0)
+        if "d_min" in header.properties:
+            parts = header.properties["d_min"].split(",")
+            if len(parts) >= 3:
+                try:
+                    params["pid.roll.d_min"] = float(parts[0])
+                    params["pid.pitch.d_min"] = float(parts[1])
+                    params["pid.yaw.d_min"] = float(parts[2])
+                except ValueError:
+                    pass
+
+
         # ── 计算时间序列 ────────────────────────────
         loop_rate_hz = params.get("looptime", 250)
         if loop_rate_hz > 100:
